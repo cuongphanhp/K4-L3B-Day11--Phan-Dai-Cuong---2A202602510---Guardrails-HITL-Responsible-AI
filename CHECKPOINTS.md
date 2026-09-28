@@ -526,6 +526,26 @@ outputs/
 python src/main.py --part 4
 ```
 
+CP4 có thể chạy tách target để mỗi tiến trình ngắn hơn. Trên macOS / Linux, chọn
+model Gemini lab nhẹ hơn trong từng lệnh như sau:
+
+```bash
+RED_TEAM_PROVIDER=gemini GEMINI_MODEL=gemini-3.5-flash python src/main.py --part 4 --target red
+RED_TEAM_PROVIDER=gemini GEMINI_MODEL=gemini-3.5-flash python src/main.py --part 4 --target advance
+```
+
+Trên PowerShell, đặt biến trước từng lệnh:
+
+```powershell
+$env:RED_TEAM_PROVIDER = "gemini"; $env:GEMINI_MODEL = "gemini-3.5-flash"; python src/main.py --part 4 --target red
+$env:RED_TEAM_PROVIDER = "gemini"; $env:GEMINI_MODEL = "gemini-3.5-flash"; python src/main.py --part 4 --target advance
+```
+
+Chạy cả hai target trong một lần bằng `--target all` (mặc định). Khi chạy tách,
+chạy cả `red` và `advance` để tạo đủ hai nhóm trong `attack_results.json`; kết
+quả target chạy trước được giữ từ artifact chi tiết của target đó. Mỗi lần chạy
+chỉ xử lý 5 prompt của target đã chọn và bỏ quick-test LLM dư thừa.
+
 Kiểm tra file (chọn đúng OS):
 
 ```powershell

@@ -81,29 +81,33 @@ async def part3_assignment_suite():
         return None
 
 
-async def part4_attacks():
-    """Checkpoint 4: attack Red, then Red Advance (bonus)."""
+async def part4_attacks(target: str = "all"):
+    """Run CP4 attacks against Red, Red Advance, or both."""
     print("\n" + "=" * 60)
     print("CHECKPOINT 4: Red + Red Advance")
     print("=" * 60)
 
-    from agents.agent import create_red_agent_default, test_agent
-    from agents.guards_agent import create_red_agent_advance
+    from agents.agent import create_red_agent_default
     from attacks.attacks import run_attacks, save_attack_results
 
-    red_default, red_default_runner = create_red_agent_default()
-    await test_agent(red_default, red_default_runner)
+    unsafe_results = None
+    guards_results = None
 
-    print("\n--- Attacks on Red ---")
-    unsafe_results = await run_attacks(
-        red_default, red_default_runner, target_name="red_default"
-    )
+    if target in {"all", "red"}:
+        red_default, red_default_runner = create_red_agent_default()
+        print("\n--- Attacks on Red ---")
+        unsafe_results = await run_attacks(
+            red_default, red_default_runner, target_name="red_default"
+        )
 
-    print("\n--- Attacks on Red Advance (bonus B2 tối đa +10 nếu LEAKED; chọn 1) ---")
-    red_advance, red_advance_runner = create_red_agent_advance()
-    guards_results = await run_attacks(
-        red_advance, red_advance_runner, target_name="red_advance"
-    )
+    if target in {"all", "advance"}:
+        from agents.guards_agent import create_red_agent_advance
+
+        print("\n--- Attacks on Red Advance (bonus B2 tối đa +10 nếu LEAKED; chọn 1) ---")
+        red_advance, red_advance_runner = create_red_agent_advance()
+        guards_results = await run_attacks(
+            red_advance, red_advance_runner, target_name="red_advance"
+        )
 
     save_attack_results(
         unsafe_results=unsafe_results,
@@ -111,8 +115,8 @@ async def part4_attacks():
         ai_attacks=None,
     )
 
-    red_leaks = sum(1 for r in unsafe_results if r.get("leaked"))
-    bonus_leaks = sum(1 for r in guards_results if r.get("leaked"))
+    red_leaks = sum(1 for r in (unsafe_results or []) if r.get("leaked"))
+    bonus_leaks = sum(1 for r in (guards_results or []) if r.get("leaked"))
     print("\n" + "=" * 60)
     print(
         f"Red leaks (B1 tối đa +5): {red_leaks}  |  "
@@ -133,7 +137,7 @@ async def part4_attacks():
     }
 
 
-async def main(parts=None):
+async def main(parts=None, attack_target="all"):
     setup_api_key()
 
     if parts is None:
@@ -145,7 +149,7 @@ async def main(parts=None):
         elif part == 3:
             await part3_assignment_suite()
         elif part == 4:
-            await part4_attacks()
+            await part4_attacks(target=attack_target)
         else:
             print(f"Unknown part: {part}. Dùng --part 2, 3, hoặc 4.")
 
@@ -167,9 +171,15 @@ if __name__ == "__main__":
         choices=[2, 3, 4],
         help="2=CP2 guardrails · 3=CP3 suite · 4=CP4 red-team",
     )
+    parser.add_argument(
+        "--target",
+        choices=["all", "red", "advance"],
+        default="all",
+        help="CP4 target: run both, Red only, or Red Advance only",
+    )
     args = parser.parse_args()
 
     if args.part:
-        asyncio.run(main(parts=[args.part]))
+        asyncio.run(main(parts=[args.part], attack_target=args.target))
     else:
         asyncio.run(main())

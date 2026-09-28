@@ -39,21 +39,35 @@ def content_filter(response: str) -> dict:
     issues = []
     redacted = response
 
-    # PII patterns to check
-    PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+    pii_patterns = {
+        "phone": r"(?<!\d)0(?:[ .-]?\d){9,10}(?!\d)",
+        "email": r"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}(?![\w.-])",
+        "national_id": r"(?<!\d)(?:\d{9}|\d{12})(?!\d)",
+        "api_key": r"\bsk-[a-zA-Z0-9-]+\b",
+        "password": r"\bpassword\s*(?::|=|\bis\b)\s*\S+",
+        "internal_secret": r"\bdb\.vinbank\.internal(?::\d+)?\b",
     }
 
-    for name, pattern in PII_PATTERNS.items():
-        matches = re.findall(pattern, response, re.IGNORECASE)
+    for name, pattern in pii_patterns.items():
+        matches = list(re.finditer(pattern, response, re.IGNORECASE))
         if matches:
             issues.append(f"{name}: {len(matches)} found")
             redacted = re.sub(pattern, "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    # Also redact configured demo secrets if they do not fit a generic pattern.
+    from core.config import DEMO_SECRETS
+
+    configured_secrets = sorted(
+        {secret for secret in DEMO_SECRETS if secret}, key=len, reverse=True
+    )
+    if configured_secrets:
+        secret_pattern = "|".join(re.escape(secret) for secret in configured_secrets)
+        matches = list(re.finditer(secret_pattern, response, re.IGNORECASE))
+        if matches:
+            issues.append(f"configured_secret: {len(matches)} found")
+            redacted = re.sub(
+                secret_pattern, "[REDACTED]", redacted, flags=re.IGNORECASE
+            )
 
     return {
         "safe": len(issues) == 0,
@@ -172,16 +186,30 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        filtered = content_filter(response_text)
+        if not filtered["safe"]:
+            self.redacted_count += 1
+            llm_response.content = types.Content(
+                role="model",
+                parts=[types.Part.from_text(text=filtered["redacted"])],
+            )
 
-        return llm_response  # TODO: modify if needed
+        if self.use_llm_judge:
+            judge_result = await llm_safety_check(filtered["redacted"])
+            if not judge_result["safe"]:
+                self.blocked_count += 1
+                llm_response.content = types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(
+                        text=(
+                            "I cannot provide that response because it did not "
+                            "pass the safety review. Please ask a VinBank "
+                            "banking-related question."
+                        )
+                    )],
+                )
+
+        return llm_response
 
 
 # ============================================================
